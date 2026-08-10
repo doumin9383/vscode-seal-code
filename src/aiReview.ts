@@ -26,10 +26,22 @@ export function formatCommentsForAI(comments: Comment[]): FormattedCommentsResul
   for (const [filePath, fileComments] of commentsByFile) {
     files.push(filePath)
     for (const comment of fileComments) {
-      const lineRange = comment.startLine === comment.endLine
-        ? `${comment.startLine}`
-        : `${comment.startLine}-${comment.endLine}`
-      lines.push(`[${comment.category}] ${filePath}:${lineRange}`)
+      if (comment.pdf) {
+        lines.push(`[${comment.category}] ${filePath} (PDF page ${comment.pdf.page})`)
+        if (comment.pdf.rect) {
+          lines.push(`Rect: ${JSON.stringify(comment.pdf.rect)}`)
+        }
+        if (comment.pdf.quadPoints) {
+          lines.push(`QuadPoints: ${JSON.stringify(comment.pdf.quadPoints)}`)
+        }
+      }
+      else {
+        const lineRange = comment.startLine === comment.endLine
+          ? `${comment.startLine}`
+          : `${comment.startLine}-${comment.endLine}`
+        lines.push(`[${comment.category}] ${filePath}:${lineRange}`)
+      }
+
       if (comment.quote) {
         lines.push(`Quote:\n${comment.quote}`)
       }
