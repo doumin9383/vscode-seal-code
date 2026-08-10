@@ -1,6 +1,8 @@
 import type { Comment, CommentCategory } from './types'
-import { workspace } from 'vscode'
+import { Range, Uri, workspace } from 'vscode'
 import { ensureCommentsFile, getCommentsFilePath } from './storage'
+
+type StoredComment = Omit<Comment, 'quote'> & { quote?: string }
 
 export class CommentStorage {
   private comments: Comment[] = []
@@ -13,7 +15,24 @@ export class CommentStorage {
 
     try {
       const content = await workspace.fs.readFile(filePath)
-      this.comments = JSON.parse(new TextDecoder().decode(content)) as Comment[]
+      const storedComments = JSON.parse(new TextDecoder().decode(content)) as StoredComment[]
+      let migrated = false
+
+      this.comments = await Promise.all(storedComments.map(async (comment) => {
+        if (typeof comment.quote === 'string') {
+          return comment as Comment
+        }
+
+        migrated = true
+        return {
+          ...comment,
+          quote: await this.recoverLegacyQuote(comment.filePath, comment.startLine, comment.endLine),
+        }
+      }))
+
+      if (migrated) {
+        await this.save()
+      }
     }
     catch {
       this.comments = []
@@ -36,6 +55,7 @@ export class CommentStorage {
     filePath: string,
     startLine: number,
     endLine: number,
+    quote: string,
     text: string,
     category: CommentCategory,
   ): Promise<Comment> {
@@ -45,6 +65,7 @@ export class CommentStorage {
       filePath,
       startLine,
       endLine,
+      quote,
       text,
       category,
       createdAt: now,
@@ -114,5 +135,27 @@ export class CommentStorage {
       await this.save()
     }
     return updated
+  }
+
+  private async recoverLegacyQuote(filePath: string, startLine: number, endLine: number): Promise<string> {
+    const workspaceRoot = workspace.workspaceFolders?.[0]?.uri
+    if (!workspaceRoot) {
+      return ''
+    }
+
+    try {
+      const document = await workspace.openTextDocument(Uri.joinPath(workspaceRoot, filePath))
+      if (document.lineCount === 0) {
+        return ''
+      }
+
+      const start = Math.max(0, Math.min(startLine - 1, document.lineCount - 1))
+      const end = Math.max(start, Math.min(endLine - 1, document.lineCount - 1))
+      const endColumn = document.lineAt(end).text.length
+      return document.getText(new Range(start, 0, end, endColumn))
+    }
+    catch {
+      return ''
+    }
   }
 }
