@@ -1,5 +1,5 @@
 import type { Comment, CommentCategory } from './types'
-import { Range, Uri, workspace } from 'vscode'
+import { Range, Uri, window, workspace } from 'vscode'
 import { ensureCommentsFile, getCommentsFilePath } from './storage'
 
 type StoredComment = Omit<Comment, 'quote'> & { quote?: string }
@@ -55,10 +55,32 @@ export class CommentStorage {
     filePath: string,
     startLine: number,
     endLine: number,
+    text: string,
+    category: CommentCategory,
+  ): Promise<Comment>
+  async add(
+    filePath: string,
+    startLine: number,
+    endLine: number,
     quote: string,
     text: string,
     category: CommentCategory,
+  ): Promise<Comment>
+  async add(
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    quoteOrText: string,
+    textOrCategory: string | CommentCategory,
+    maybeCategory?: CommentCategory,
   ): Promise<Comment> {
+    const explicitQuote = maybeCategory !== undefined
+    const quote = explicitQuote
+      ? quoteOrText
+      : await this.captureCurrentQuote(filePath, startLine, endLine)
+    const text = explicitQuote ? textOrCategory as string : quoteOrText
+    const category = explicitQuote ? maybeCategory : textOrCategory as CommentCategory
+
     const now = new Date().toISOString()
     const comment: Comment = {
       id: crypto.randomUUID(),
@@ -135,6 +157,18 @@ export class CommentStorage {
       await this.save()
     }
     return updated
+  }
+
+  private async captureCurrentQuote(filePath: string, startLine: number, endLine: number): Promise<string> {
+    const editor = window.activeTextEditor
+    if (editor && workspace.asRelativePath(editor.document.uri) === filePath) {
+      const selectedText = editor.document.getText(editor.selection)
+      if (selectedText.length > 0) {
+        return selectedText
+      }
+    }
+
+    return this.recoverLegacyQuote(filePath, startLine, endLine)
   }
 
   private async recoverLegacyQuote(filePath: string, startLine: number, endLine: number): Promise<string> {
