@@ -119,6 +119,12 @@
         "title": "Send Category to AI",
         "category": "Code Review",
         "icon": "$(tag)"
+      },
+      {
+        "command": "codeReview.importPdfAnnotations",
+        "title": "Import PDF Annotations",
+        "category": "Code Review",
+        "icon": "$(file-pdf)"
       }
     ],
     "viewsContainers": {
@@ -150,6 +156,9 @@
         {
           "command": "codeReview.addComment",
           "when": "editorIsOpen"
+        },
+        {
+          "command": "codeReview.importPdfAnnotations"
         },
         {
           "command": "codeReview.editComment",
@@ -299,7 +308,7 @@
         "seal-code.aiToolOpenCodeModel": {
           "type": "string",
           "default": "opencode/big-pickle",
-          "description": "OpenCode model to use (e.g., opencode/big-pickle, opencode/claude)"
+          "description": "OpenCode model to use (e.g., opencode/claude)"
         },
         "seal-code.aiToolCopilotModel": {
           "type": "string",
@@ -333,6 +342,9 @@
         }
       }
     }
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.1.200"
   },
   "scripts": {
     "build": "tsdown src/index.ts --external vscode",
