@@ -99,6 +99,16 @@ export class CommentStorage {
     return comment
   }
 
+  async addImported(comment: Comment): Promise<boolean> {
+    if (this.getById(comment.id)) {
+      return false
+    }
+
+    this.comments.push(comment)
+    await this.save()
+    return true
+  }
+
   async update(id: string, updates: Partial<Pick<Comment, 'text' | 'category'>>): Promise<Comment | undefined> {
     const index = this.comments.findIndex(c => c.id === id)
     if (index === -1) {
