@@ -4,12 +4,14 @@ import { registerAnnotationInbox } from './annotationInbox'
 import { handleFileRename, registerCommands, updateCurrentFilePath } from './commands'
 import { disposeDecorations, refreshAllDecorations, updateDecorations } from './decorations'
 import { registerPdfAnnotationImport } from './pdfAnnotationImport'
+import { registerPdfPreview } from './pdfPreview'
 import { registerTreeView } from './treeView'
 
 const { activate, deactivate } = defineExtension(() => {
   registerCommands()
   registerTreeView()
   const pdfAnnotationImport = registerPdfAnnotationImport()
+  registerPdfPreview()
 
   let annotationInbox: { dispose: () => void } | undefined
   void registerAnnotationInbox().then((watcher) => {
