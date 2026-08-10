@@ -1,5 +1,5 @@
 import type { Comment, CommentCategory } from './types'
-import { RelativePattern, Uri, window, workspace } from 'vscode'
+import { Range, RelativePattern, Uri, window, workspace } from 'vscode'
 import { getStorage, refreshAllDecorations } from './decorations'
 import { refreshTreeView } from './treeView'
 
@@ -19,6 +19,7 @@ interface InboxPayload {
 }
 
 const INBOX_GLOB = '.codereview/inbox/*.json'
+const IMPORT_DEBOUNCE_MS = 150
 const VALID_CATEGORIES = new Set<CommentCategory>(['bug', 'question', 'suggestion', 'nitpick', 'note'])
 
 function isInboxPayload(value: unknown): value is InboxPayload {
@@ -54,9 +55,7 @@ async function locateQuote(filePath: string, quote: string, startLine?: number, 
       const start = Math.max(0, startLine - 1)
       const end = Math.min(document.lineCount - 1, endLine - 1)
       if (start <= end) {
-        const rangeStart = document.lineAt(start).range.start
-        const rangeEnd = document.lineAt(end).range.end
-        const candidate = document.getText({ start: rangeStart, end: rangeEnd })
+        const candidate = document.getText(new Range(document.lineAt(start).range.start, document.lineAt(end).range.end))
         if (candidate.includes(quote)) {
           return { startLine, endLine }
         }
@@ -163,14 +162,36 @@ export async function registerAnnotationInbox(): Promise<{ dispose: () => void }
 
   const pattern = new RelativePattern(workspaceFolder, INBOX_GLOB)
   const watcher = workspace.createFileSystemWatcher(pattern)
+  const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
-  watcher.onDidCreate(uri => void importInboxFile(uri))
-  watcher.onDidChange(uri => void importInboxFile(uri))
+  const scheduleImport = (uri: Uri) => {
+    const key = uri.toString()
+    const existing = pending.get(key)
+    if (existing) {
+      clearTimeout(existing)
+    }
+
+    pending.set(key, setTimeout(() => {
+      pending.delete(key)
+      void importInboxFile(uri)
+    }, IMPORT_DEBOUNCE_MS))
+  }
+
+  watcher.onDidCreate(scheduleImport)
+  watcher.onDidChange(scheduleImport)
 
   const existing = await workspace.findFiles(pattern)
   for (const uri of existing) {
     await importInboxFile(uri)
   }
 
-  return watcher
+  return {
+    dispose() {
+      watcher.dispose()
+      for (const timer of pending.values()) {
+        clearTimeout(timer)
+      }
+      pending.clear()
+    },
+  }
 }
