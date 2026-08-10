@@ -29,12 +29,17 @@ export function formatCommentsForAI(comments: Comment[]): FormattedCommentsResul
       const lineRange = comment.startLine === comment.endLine
         ? `${comment.startLine}`
         : `${comment.startLine}-${comment.endLine}`
-      lines.push(`[${comment.category}] ${filePath}:${lineRange} - ${comment.text}`)
+      lines.push(`[${comment.category}] ${filePath}:${lineRange}`)
+      if (comment.quote) {
+        lines.push(`Quote:\n${comment.quote}`)
+      }
+      lines.push(`Comment:\n${comment.text}`)
+      lines.push('')
     }
   }
 
   return {
-    formattedComments: lines.join('\n'),
+    formattedComments: lines.join('\n').trimEnd(),
     files,
   }
 }

@@ -5,6 +5,7 @@ export interface Comment {
   filePath: string
   startLine: number
   endLine: number
+  quote: string
   text: string
   category: CommentCategory
   createdAt: string
