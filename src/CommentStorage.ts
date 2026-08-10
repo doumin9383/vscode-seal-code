@@ -79,7 +79,7 @@ export class CommentStorage {
       ? quoteOrText
       : await this.captureCurrentQuote(filePath, startLine, endLine)
     const text = explicitQuote ? textOrCategory as string : quoteOrText
-    const category = explicitQuote ? maybeCategory : textOrCategory as CommentCategory
+    const category = explicitQuote ? maybeCategory as CommentCategory : textOrCategory as CommentCategory
 
     const now = new Date().toISOString()
     const comment: Comment = {
