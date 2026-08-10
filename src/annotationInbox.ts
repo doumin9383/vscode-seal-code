@@ -3,14 +3,23 @@ import { Range, RelativePattern, Uri, window, workspace } from 'vscode'
 import { getStorage, refreshAllDecorations } from './decorations'
 import { refreshTreeView } from './treeView'
 
-interface InboxAnnotation {
-  id: string
-  filePath: string
+interface InboxDocumentRef {
+  path: string
+}
+
+interface InboxTextAnchor {
+  type: 'text'
   quote: string
-  comment: string
-  category?: CommentCategory
   startLine?: number
   endLine?: number
+}
+
+interface InboxAnnotation {
+  id: string
+  document: InboxDocumentRef
+  anchor: InboxTextAnchor
+  comment: string
+  category?: CommentCategory
 }
 
 interface InboxPayload {
@@ -34,10 +43,11 @@ function isInboxPayload(value: unknown): value is InboxPayload {
 function isValidAnnotation(annotation: InboxAnnotation): boolean {
   return typeof annotation?.id === 'string'
     && annotation.id.length > 0
-    && typeof annotation.filePath === 'string'
-    && annotation.filePath.length > 0
-    && typeof annotation.quote === 'string'
-    && annotation.quote.length > 0
+    && typeof annotation.document?.path === 'string'
+    && annotation.document.path.length > 0
+    && annotation.anchor?.type === 'text'
+    && typeof annotation.anchor.quote === 'string'
+    && annotation.anchor.quote.length > 0
     && typeof annotation.comment === 'string'
     && annotation.comment.length > 0
 }
@@ -110,7 +120,9 @@ async function importInboxFile(uri: Uri): Promise<void> {
       continue
     }
 
-    const location = await locateQuote(annotation.filePath, annotation.quote, annotation.startLine, annotation.endLine)
+    const filePath = annotation.document.path
+    const { quote, startLine, endLine } = annotation.anchor
+    const location = await locateQuote(filePath, quote, startLine, endLine)
     if (!location) {
       failures.push(annotation.id)
       continue
@@ -123,10 +135,10 @@ async function importInboxFile(uri: Uri): Promise<void> {
 
     const comment: Comment = {
       id: annotation.id,
-      filePath: annotation.filePath,
+      filePath,
       startLine: location.startLine,
       endLine: location.endLine,
-      quote: annotation.quote,
+      quote,
       text: annotation.comment,
       category,
       createdAt: now,
