@@ -3,11 +3,13 @@ import { window, workspace } from 'vscode'
 import { registerAnnotationInbox } from './annotationInbox'
 import { handleFileRename, registerCommands, updateCurrentFilePath } from './commands'
 import { disposeDecorations, refreshAllDecorations, updateDecorations } from './decorations'
+import { registerPdfAnnotationImport } from './pdfAnnotationImport'
 import { registerTreeView } from './treeView'
 
 const { activate, deactivate } = defineExtension(() => {
   registerCommands()
   registerTreeView()
+  const pdfAnnotationImport = registerPdfAnnotationImport()
 
   let annotationInbox: { dispose: () => void } | undefined
   void registerAnnotationInbox().then((watcher) => {
@@ -53,6 +55,7 @@ const { activate, deactivate } = defineExtension(() => {
   return {
     dispose() {
       annotationInbox?.dispose()
+      pdfAnnotationImport.dispose()
       disposeDecorations()
     },
   }
