@@ -45,18 +45,23 @@ class CommentItem implements TreeItem {
   }
 
   get description(): string {
-    const lineInfo = this.comment.startLine === this.comment.endLine
+    if (this.comment.pdf) {
+      return `p.${this.comment.pdf.page}`
+    }
+
+    return this.comment.startLine === this.comment.endLine
       ? `L${this.comment.startLine}`
       : `L${this.comment.startLine}-${this.comment.endLine}`
-    return lineInfo
   }
 
   get tooltip(): string {
     const categoryLabel = this.getCategoryLabel(this.comment.category)
-    const lineInfo = this.comment.startLine === this.comment.endLine
-      ? `Line ${this.comment.startLine}`
-      : `Lines ${this.comment.startLine}-${this.comment.endLine}`
-    return `${categoryLabel} - ${lineInfo}\n\n${this.comment.text}`
+    const locationInfo = this.comment.pdf
+      ? `PDF page ${this.comment.pdf.page}`
+      : this.comment.startLine === this.comment.endLine
+        ? `Line ${this.comment.startLine}`
+        : `Lines ${this.comment.startLine}-${this.comment.endLine}`
+    return `${categoryLabel} - ${locationInfo}\n\n${this.comment.text}`
   }
 
   get iconPath() {

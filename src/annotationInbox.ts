@@ -14,10 +14,20 @@ interface InboxTextAnchor {
   endLine?: number
 }
 
+interface InboxPdfAnchor {
+  type: 'pdf'
+  page: number
+  quote: string
+  rect?: number[]
+  quadPoints?: number[]
+}
+
+type InboxAnchor = InboxTextAnchor | InboxPdfAnchor
+
 interface InboxAnnotation {
   id: string
   document: InboxDocumentRef
-  anchor: InboxTextAnchor
+  anchor: InboxAnchor
   comment: string
   category?: CommentCategory
 }
@@ -40,16 +50,34 @@ function isInboxPayload(value: unknown): value is InboxPayload {
   return payload.version === 1 && Array.isArray(payload.annotations)
 }
 
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'number' && Number.isFinite(item))
+}
+
 function isValidAnnotation(annotation: InboxAnnotation): boolean {
-  return typeof annotation?.id === 'string'
-    && annotation.id.length > 0
-    && typeof annotation.document?.path === 'string'
-    && annotation.document.path.length > 0
-    && annotation.anchor?.type === 'text'
-    && typeof annotation.anchor.quote === 'string'
-    && annotation.anchor.quote.length > 0
-    && typeof annotation.comment === 'string'
-    && annotation.comment.length > 0
+  if (typeof annotation?.id !== 'string'
+    || annotation.id.length === 0
+    || typeof annotation.document?.path !== 'string'
+    || annotation.document.path.length === 0
+    || typeof annotation.comment !== 'string'
+    || annotation.comment.length === 0
+    || typeof annotation.anchor?.quote !== 'string'
+    || annotation.anchor.quote.length === 0) {
+    return false
+  }
+
+  if (annotation.anchor.type === 'text') {
+    return true
+  }
+
+  if (annotation.anchor.type === 'pdf') {
+    return Number.isInteger(annotation.anchor.page)
+      && annotation.anchor.page > 0
+      && (annotation.anchor.rect === undefined || isNumberArray(annotation.anchor.rect))
+      && (annotation.anchor.quadPoints === undefined || isNumberArray(annotation.anchor.quadPoints))
+  }
+
+  return false
 }
 
 async function locateQuote(filePath: string, quote: string, startLine?: number, endLine?: number): Promise<{ startLine: number, endLine: number } | undefined> {
@@ -121,28 +149,49 @@ async function importInboxFile(uri: Uri): Promise<void> {
     }
 
     const filePath = annotation.document.path
-    const { quote, startLine, endLine } = annotation.anchor
-    const location = await locateQuote(filePath, quote, startLine, endLine)
-    if (!location) {
-      failures.push(annotation.id)
-      continue
-    }
-
     const now = new Date().toISOString()
     const category = annotation.category && VALID_CATEGORIES.has(annotation.category)
       ? annotation.category
       : 'note'
 
-    const comment: Comment = {
-      id: annotation.id,
-      filePath,
-      startLine: location.startLine,
-      endLine: location.endLine,
-      quote,
-      text: annotation.comment,
-      category,
-      createdAt: now,
-      updatedAt: now,
+    let comment: Comment
+    if (annotation.anchor.type === 'text') {
+      const { quote, startLine, endLine } = annotation.anchor
+      const location = await locateQuote(filePath, quote, startLine, endLine)
+      if (!location) {
+        failures.push(annotation.id)
+        continue
+      }
+
+      comment = {
+        id: annotation.id,
+        filePath,
+        startLine: location.startLine,
+        endLine: location.endLine,
+        quote,
+        text: annotation.comment,
+        category,
+        createdAt: now,
+        updatedAt: now,
+      }
+    }
+    else {
+      comment = {
+        id: annotation.id,
+        filePath,
+        startLine: annotation.anchor.page,
+        endLine: annotation.anchor.page,
+        quote: annotation.anchor.quote,
+        text: annotation.comment,
+        category,
+        pdf: {
+          page: annotation.anchor.page,
+          rect: annotation.anchor.rect,
+          quadPoints: annotation.anchor.quadPoints,
+        },
+        createdAt: now,
+        updatedAt: now,
+      }
     }
 
     if (await storage.addImported(comment)) {
