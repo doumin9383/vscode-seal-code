@@ -1,70 +1,64 @@
-import type { CustomDocument, CustomReadonlyEditorProvider, WebviewPanel } from 'vscode'
 import * as path from 'node:path'
-import { Uri, window, workspace } from 'vscode'
+import { Uri, ViewColumn, window, workspace } from 'vscode'
 import { getStorage, refreshAllDecorations } from './decorations'
 import { refreshTreeView } from './treeView'
 
-class PdfPreviewDocument implements CustomDocument {
-  constructor(public readonly uri: Uri) {}
-  dispose(): void {}
-}
-
-export class PdfPreviewProvider implements CustomReadonlyEditorProvider<PdfPreviewDocument> {
-  openCustomDocument(uri: Uri): PdfPreviewDocument {
-    return new PdfPreviewDocument(uri)
-  }
-
-  async resolveCustomEditor(document: PdfPreviewDocument, webviewPanel: WebviewPanel): Promise<void> {
-    const extensionRoot = Uri.file(path.join(__dirname, '..'))
-    const pdfJsRoot = Uri.joinPath(extensionRoot, 'node_modules', 'pdfjs-dist')
-    const webview = webviewPanel.webview
-    webview.options = {
+export async function openPdfReviewPreview(documentUri: Uri): Promise<void> {
+  const extensionRoot = Uri.file(path.join(__dirname, '..'))
+  const pdfJsRoot = Uri.joinPath(extensionRoot, 'node_modules', 'pdfjs-dist')
+  const panel = window.createWebviewPanel(
+    'seal-code.pdfReviewPreview',
+    `Doc Note PDF: ${path.basename(documentUri.fsPath)}`,
+    ViewColumn.Active,
+    {
       enableScripts: true,
-      localResourceRoots: [extensionRoot, pdfJsRoot, Uri.joinPath(document.uri, '..')],
+      retainContextWhenHidden: true,
+      localResourceRoots: [extensionRoot, pdfJsRoot, Uri.joinPath(documentUri, '..')],
+    },
+  )
+
+  const pdfUri = panel.webview.asWebviewUri(documentUri)
+  const pdfJsUri = panel.webview.asWebviewUri(Uri.joinPath(pdfJsRoot, 'build', 'pdf.mjs'))
+  const workerUri = panel.webview.asWebviewUri(Uri.joinPath(pdfJsRoot, 'build', 'pdf.worker.mjs'))
+  panel.webview.html = getHtml(pdfUri.toString(), pdfJsUri.toString(), workerUri.toString())
+
+  panel.webview.onDidReceiveMessage(async (message) => {
+    if (message?.type !== 'addComment') return
+
+    const quote = typeof message.quote === 'string' ? message.quote.trim() : ''
+    const commentText = typeof message.comment === 'string' ? message.comment.trim() : ''
+    const page = Number(message.page)
+    const rect = Array.isArray(message.rect) ? message.rect.map(Number).filter(Number.isFinite) : undefined
+
+    if (!quote || !commentText || !Number.isInteger(page) || page < 1) {
+      window.showWarningMessage('Could not create PDF review comment: invalid selection')
+      return
     }
 
-    const pdfUri = webview.asWebviewUri(document.uri)
-    const pdfJsUri = webview.asWebviewUri(Uri.joinPath(pdfJsRoot, 'build', 'pdf.mjs'))
-    const workerUri = webview.asWebviewUri(Uri.joinPath(pdfJsRoot, 'build', 'pdf.worker.mjs'))
-    webview.html = this.getHtml(pdfUri.toString(), pdfJsUri.toString(), workerUri.toString())
-
-    webview.onDidReceiveMessage(async (message) => {
-      if (message?.type !== 'addComment') return
-
-      const quote = typeof message.quote === 'string' ? message.quote.trim() : ''
-      const commentText = typeof message.comment === 'string' ? message.comment.trim() : ''
-      const page = Number(message.page)
-      const rect = Array.isArray(message.rect) ? message.rect.map(Number).filter(Number.isFinite) : undefined
-
-      if (!quote || !commentText || !Number.isInteger(page) || page < 1) {
-        window.showWarningMessage('Could not create PDF review comment: invalid selection')
-        return
-      }
-
-      const storage = getStorage()
-      await storage.load()
-      const now = new Date().toISOString()
-      await storage.addImported({
-        id: crypto.randomUUID(),
-        filePath: workspace.asRelativePath(document.uri),
-        startLine: page,
-        endLine: page,
-        quote,
-        text: commentText,
-        category: 'note',
-        pdf: { page, rect },
-        createdAt: now,
-        updatedAt: now,
-      })
-
-      refreshTreeView()
-      await refreshAllDecorations()
-      void webview.postMessage({ type: 'commentAdded' })
+    const storage = getStorage()
+    await storage.load()
+    const now = new Date().toISOString()
+    await storage.addImported({
+      id: crypto.randomUUID(),
+      filePath: workspace.asRelativePath(documentUri),
+      startLine: page,
+      endLine: page,
+      quote,
+      text: commentText,
+      category: 'note',
+      pdf: { page, rect },
+      createdAt: now,
+      updatedAt: now,
     })
-  }
 
-  private getHtml(pdfUri: string, pdfJsUri: string, workerUri: string): string {
-    return `<!doctype html>
+    refreshTreeView()
+    await refreshAllDecorations()
+    void panel.webview.postMessage({ type: 'commentAdded' })
+  })
+}
+
+function getHtml(pdfUri: string, pdfJsUri: string, workerUri: string): string {
+  return `<!doctype html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
 body{margin:0;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family)}
@@ -89,11 +83,7 @@ for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){
 document.addEventListener('mouseup',()=>{const selection=window.getSelection(),quote=selection?selection.toString().trim():'';if(!selection||!quote||selection.rangeCount===0)return;const range=selection.getRangeAt(0),startEl=range.startContainer.nodeType===3?range.startContainer.parentElement:range.startContainer,endEl=range.endContainer.nodeType===3?range.endContainer.parentElement:range.endContainer,startPage=startEl?.closest?.('.page'),endPage=endEl?.closest?.('.page');if(!startPage||startPage!==endPage){status.textContent='Select text within one page';return}const spans=Array.from(startPage.querySelectorAll('.textLayer span')).filter(span=>selection.containsNode(span,true)),xs=[],ys=[],x2s=[],y2s=[];for(const span of spans){const x=Number(span.dataset.pdfX),y=Number(span.dataset.pdfY),w=Number(span.dataset.pdfW),h=Number(span.dataset.pdfH);if([x,y,w,h].every(Number.isFinite)){xs.push(x);ys.push(y);x2s.push(x+w);y2s.push(y+h)}}const rect=xs.length?[Math.min(...xs),Math.min(...ys),Math.max(...x2s),Math.max(...y2s)]:undefined;pendingSelection={page:Number(startPage.dataset.page),quote,rect};commentBox.style.display='flex';commentInput.value='';commentInput.focus()});
 document.getElementById('saveComment').addEventListener('click',()=>{if(!pendingSelection)return;const comment=commentInput.value.trim();if(comment)vscode.postMessage({type:'addComment',...pendingSelection,comment})});
 document.getElementById('cancelComment').addEventListener('click',()=>{pendingSelection=null;commentBox.style.display='none';window.getSelection()?.removeAllRanges()});
+commentInput.addEventListener('keydown',event=>{if(event.key==='Enter')document.getElementById('saveComment').click();if(event.key==='Escape')document.getElementById('cancelComment').click()});
 window.addEventListener('message',event=>{if(event.data?.type==='commentAdded'){status.textContent='Comment added';pendingSelection=null;commentBox.style.display='none';window.getSelection()?.removeAllRanges()}});
 </script></body></html>`
-  }
-}
-
-export function registerPdfPreview(): void {
-  window.registerCustomEditorProvider('seal-code.pdfPreview', new PdfPreviewProvider(), { supportsMultipleEditorsPerDocument: true })
 }
