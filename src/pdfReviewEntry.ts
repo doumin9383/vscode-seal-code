@@ -1,6 +1,7 @@
 import type { Disposable } from 'vscode'
 import { commands, window, workspace } from 'vscode'
 import { importPdfAnnotations } from './pdfAnnotationImport'
+import { openPdfReviewPreview } from './pdfPreview'
 
 export function registerPdfReviewEntry(): Disposable {
   return commands.registerCommand('codeReview.importPdfAnnotations', async () => {
@@ -41,6 +42,6 @@ export function registerPdfReviewEntry(): Disposable {
       return
     }
 
-    await commands.executeCommand('vscode.openWith', uri, 'seal-code.pdfPreview')
+    await openPdfReviewPreview(uri)
   })
 }
