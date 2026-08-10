@@ -1,5 +1,6 @@
 import { defineExtension } from 'reactive-vscode'
 import { window, workspace } from 'vscode'
+import { registerAnnotationInbox } from './annotationInbox'
 import { handleFileRename, registerCommands, updateCurrentFilePath } from './commands'
 import { disposeDecorations, refreshAllDecorations, updateDecorations } from './decorations'
 import { registerTreeView } from './treeView'
@@ -7,6 +8,11 @@ import { registerTreeView } from './treeView'
 const { activate, deactivate } = defineExtension(() => {
   registerCommands()
   registerTreeView()
+
+  let annotationInbox: { dispose: () => void } | undefined
+  void registerAnnotationInbox().then((watcher) => {
+    annotationInbox = watcher
+  })
 
   refreshAllDecorations()
   updateCurrentFilePath()
@@ -46,6 +52,7 @@ const { activate, deactivate } = defineExtension(() => {
 
   return {
     dispose() {
+      annotationInbox?.dispose()
       disposeDecorations()
     },
   }
